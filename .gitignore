@@ -1,0 +1,14 @@
+# Data files — too large for git
+INSIGHT-LME/
+mm-fit/
+Whales1and2/
+MyoGym/
+recofit/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
