@@ -1,6 +1,7 @@
 # SetWise Changelog
 
 ## v3 (current)
+- INSIGHT-LME standalone notebook (`INSIGHT-LME/INSIGHT_LME_Processing.ipynb`): EDA + save raw 50 Hz segments to `INSIGHT_LME_processed.npz`; `load_insight()` in v3 now loads from .npz instead of re-parsing the CSV (fixes FileNotFoundError, segments per-trial instead of per-participant).
 - Single-branch time-normalized architecture (SetWiseV3). Dropped variable-length masked pooling; all inputs resampled to T_NORM=512 via scipy_resample. Rep count encoded as cycle frequency.
 - Fixed recofit -1 sentinel bug: was leaking 3 339 non-exercise rows into rep regression as rep_count=-1. Guard is now `reps > 0`.
 - INSIGHT-LME promoted to `has_reps=True`: whole-set resampling preserves cycle count regardless of per-rep normalisation.
