@@ -12,3 +12,7 @@ recofit/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+
+# other
+pack_for_jupyterhub.sh
+setwise_data.tar.gz
