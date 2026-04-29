@@ -1,0 +1,74 @@
+{
+  "dataset_path": "prepared/mmfit_setwise_left_watch_50hz.npz",
+  "watch_side": "left",
+  "target_rate_hz": 50.0,
+  "num_samples": 616,
+  "tensor_shape": [
+    616,
+    1838,
+    6
+  ],
+  "feature_names": [
+    "acc_x",
+    "acc_y",
+    "acc_z",
+    "gyr_x",
+    "gyr_y",
+    "gyr_z"
+  ],
+  "label_names": [
+    "squats",
+    "lunges",
+    "bicep_curls",
+    "situps",
+    "pushups",
+    "tricep_extensions",
+    "dumbbell_rows",
+    "jumping_jacks",
+    "dumbbell_shoulder_press",
+    "lateral_shoulder_raises"
+  ],
+  "label_counts": {
+    "squats": 64,
+    "lunges": 62,
+    "bicep_curls": 59,
+    "situps": 65,
+    "pushups": 65,
+    "tricep_extensions": 64,
+    "dumbbell_rows": 64,
+    "jumping_jacks": 57,
+    "dumbbell_shoulder_press": 60,
+    "lateral_shoulder_raises": 56
+  },
+  "rep_stats": {
+    "min": 1,
+    "max": 14,
+    "mean": 10.0
+  },
+  "duration_stats": {
+    "min_seconds": 1.2999999523162842,
+    "max_seconds": 36.766666412353516,
+    "mean_seconds": 20.19253158569336,
+    "max_timesteps": 1838
+  },
+  "split_counts": {
+    "repo_seen": {
+      "test": 90,
+      "train": 301,
+      "unused": 139,
+      "val": 86
+    },
+    "repo_unseen": {
+      "test": 139,
+      "train": 301,
+      "unused": 90,
+      "val": 86
+    }
+  },
+  "notes": [
+    "Each sample is one labeled exercise set from MM-Fit.",
+    "Features are [acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z] from a single smartwatch.",
+    "Sequences are padded to the maximum set length; use lengths or padding_mask during training.",
+    "split_repo_seen and split_repo_unseen mirror the workout splits used by the repo."
+  ]
+}
