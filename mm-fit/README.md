@@ -1,13 +1,14 @@
 # SetWise MM-Fit Rep Counting Source of Truth
 
 This README is the working reference for SetWise model development on the
-MM-Fit dataset. It is grounded in the local prepared dataset, the original
-MM-Fit code, and `UbiComp2020.pdf`.
+MM-Fit wrist-IMU dataset. It is grounded in the local prepared MM-Fit dataset,
+the original MM-Fit code, and `UbiComp2020.pdf`.
 
 Bottom line: use MM-Fit for exercise classification/segmentation and for
-paper-style rep-count evaluation. Do not treat MM-Fit as a standalone neural
-rep-regression training set. The rep labels are intentionally centered on 10,
-so a naive constant-10 counter is extremely strong on aggregate metrics.
+paper-style rep-count evaluation. Omit Whales from the v1 training path because
+its local recordings have a large duration/domain mismatch against MM-Fit. Do
+not train a standalone neural rep-regression model on MM-Fit alone because its
+rep labels are intentionally centered on 10.
 
 ## Source of Truth
 
@@ -159,16 +160,75 @@ If a learned rep model does not beat constant 10 on the same split and does not
 improve non-10 behavior, it is not learning useful rep-count structure from
 MM-Fit.
 
+## Whales Omitted From V1
+
+The local `Whales1and2_Raw_Labelled` dataset is intentionally omitted from the
+v1 training and evaluation path.
+
+The reason is not that Whales is unusable forever. The reason is that the
+current local audit showed a substantial domain mismatch against MM-Fit:
+
+| Check | MM-Fit | Whales |
+| --- | ---: | ---: |
+| Sets | 616 | 164 |
+| Median set duration after preprocessing | `19.72s` | `63.92s` |
+| Max set duration after preprocessing | `36.77s` | `391.96s` |
+| Median 50 Hz length before 512-step resample | `986` | `3196` |
+| Max 50 Hz length before 512-step resample | `1838` | `19598` |
+
+Only `61/164` Whales files were active-cropped by the first deterministic crop
+rule, so many Whales examples still appear to include setup, rest, or idle time.
+Merging that data now risks training a model to detect dataset identity rather
+than movement structure.
+
+Future Whales work should be a separate project: improve active-set cropping,
+re-audit duration distributions, and only then test cross-dataset transfer.
+Do not use Whales numbers as v1 model-development claims.
+
+## V1 Dataset Strategy
+
+Use MM-Fit alone for v1:
+
+- Exercise recognition/classification: train and evaluate on MM-Fit
+  `split_repo_unseen`.
+- Rep counting: use the paper-style signal-processing counter with segmented
+  MM-Fit sets and known or predicted exercise labels.
+- Learned rep regression: not a v1 headline task because MM-Fit has `566/616`
+  sets at exactly 10 reps.
+
+The model-development target is therefore classification first, then a
+paper-aligned counter. Classification can be learned from MM-Fit. Rep counting
+should be evaluated against MM-Fit labels, but the count logic should not be
+represented as a neural regression model trained only on this biased label
+distribution.
+
+## Normalization Contract
+
+Normalization must happen in a fixed order:
+
+1. Load MM-Fit left-watch streams into `[acc_x, acc_y, acc_z, gyr_x, gyr_y,
+   gyr_z]`.
+2. Slice each labeled set by frame masks, not by sensor row indices.
+3. Resample each labeled set to `50 Hz`.
+4. Remove per-sequence accelerometer median/bias to reduce gravity/device
+   offsets.
+5. Fit channel mean/std on train-split valid timesteps only.
+6. Apply the fitted scaler to validation, test, and unused samples.
+7. Preserve `lengths` or `padding_mask` when using variable-length padded
+   tensors; for fixed-length model tensors, preserve `lengths_50hz` for audit.
+
 ## Recommended Modeling Direction
 
-Use a paper-aligned hybrid pipeline:
+Recommended stages:
 
-1. Train or reuse a classifier/segmenter for exercise recognition.
-2. Segment the set or infer stable exercise intervals from window predictions.
-3. Choose rep-counter thresholds from the predicted exercise class.
-4. Count repetitions from the segmented left-watch gyroscope signal.
-5. Compare gyroscope, accelerometer, and acc+gyr variants.
-6. Report paper-style rep metrics against the manual set labels.
+1. Train or reuse a classifier/segmenter for MM-Fit exercise recognition.
+2. Use the paper-style signal-processing counter as the v1 rep-count path,
+   especially for left-watch gyroscope inputs.
+3. Compare learned classification plus signal-counting against oracle exercise
+   labels and oracle set boundaries.
+4. Compare gyroscope-only, accelerometer-only, and acc+gyr variants.
+5. Report MM-Fit classification accuracy and MM-Fit rep-count metrics
+   separately.
 
 For classification, prefer a windowed model over a full-set flattened MLP if the
 goal is to match the paper and support real-time behavior. The paper uses `5s`
@@ -233,15 +293,114 @@ The existing `analysis/prepare_setwise_watch_dataset.py` export is correct for
 set-level left-watch experiments because it masks by frame range, resamples each
 labeled set to `50 Hz`, pads shorter sets, and preserves the real lengths.
 
+## MM-Fit Prepare Script
+
+Use the root-level `../prepare.py` script to build the model-ready MM-Fit-only
+dataset. The default contract is MM-Fit only, `50 Hz`, left-watch
+`acc_xyz + gyr_xyz`, and `512` timesteps per set.
+
+Run in Colab with the Drive dataset path:
+
+```bash
+python prepare.py --mount-drive \
+  --drive-root /content/drive/MyDrive/SetwiseKineticDatasets
+```
+
+The default Colab inputs are:
+
+```text
+/content/drive/MyDrive/SetwiseKineticDatasets/mm-fit-dataset
+```
+
+The default output directory is:
+
+```text
+/content/drive/MyDrive/SetwiseKineticDatasets/prepared
+```
+
+Local smoke run from the `SetWise` repo root:
+
+```bash
+python prepare.py --no-mount-drive
+```
+
+Classifier-window prep, which supersedes v1's flattened full-set classifier
+input:
+
+```bash
+python prepare.py --dataset mmfit --view windows \
+  --window-seconds 5 --stride-seconds 0.2 \
+  --include-non-activity --no-mount-drive
+```
+
+Expected output files:
+
+```text
+setwise_mmfit_only_50hz_512.npz
+setwise_mmfit_only_50hz_512_metadata.json
+```
+
+The MM-Fit-only `.npz` contains:
+
+| Field | Meaning |
+| --- | --- |
+| `X` | Normalized `(616, 512, 6)` tensor |
+| `lengths_50hz` | 50 Hz sequence length before final 512-step temporal resampling |
+| `duration_s` | Set duration before final temporal resampling |
+| `source` | `mmfit` |
+| `source_file` | Raw source path for audit/debugging |
+| `frame_start`, `frame_end` | MM-Fit video-frame label range used for slicing |
+| `exercise_id`, `exercise_name` | Original MM-Fit exercise label |
+| `reps` | Set-level repetition count |
+| `rep_supervised` | `False` for all MM-Fit samples by default |
+| `classification_supervised` | `True` for all MM-Fit samples |
+| `split` | MM-Fit `split_repo_unseen` with `w09-w11` retained as `unused` |
+
+`prepare.py` fits channel mean/std only on train-split samples after
+per-sequence accelerometer median removal and fixed-length temporal resampling.
+Validation, test, and unused samples are transformed with that train-only
+scaler.
+
+The classifier-window output files are:
+
+```text
+setwise_mmfit_windows_50hz_5s_stride0p2_X.npy
+setwise_mmfit_windows_50hz_5s_stride0p2_labels.npz
+setwise_mmfit_windows_50hz_5s_stride0p2_metadata.json
+```
+
+Window dataset contract:
+
+| Field | Meaning |
+| --- | --- |
+| `X` | Normalized `(246431, 250, 6)` windows in memmap-compatible `.npy` |
+| `y` | Class IDs for 10 exercises plus `non_activity` |
+| `label_names` | Original MM-Fit labels with `non_activity` at index `10` |
+| `split`, `workout_id` | `split_repo_unseen` workout assignment for each window |
+| `window_start_s`, `window_end_s` | Window time range within the workout |
+| `window_start_frame`, `window_end_frame` | Approximate video-frame range for audit |
+| `majority_fraction` | Share of timesteps belonging to the assigned class |
+| `is_transition_window` | True when the 5s window crosses label boundaries |
+| `sample_weight`, `class_weight_train` | Train-split class-balancing weights |
+
+Use `class_weight_train` or `sample_weight` during classifier training because
+`non_activity` is intentionally common in the full-workout window view.
+
+The old merged output can still be generated explicitly with
+`python prepare.py --dataset merged`, but it is not the v1 development path.
+
 ## Practical Next Steps
 
-1. Implement the paper-style rep counter as a small, testable module.
-2. Evaluate it first with oracle set boundaries and true exercise labels.
-3. Evaluate gyroscope-only, accelerometer-only, and acc+gyr variants.
-4. Tune exercise thresholds on train/validation workouts only.
-5. Add a windowed classifier/segmenter and measure the effect of predicted
-   boundaries/classes on rep-count error.
-6. Keep the constant-10 baseline in every report.
+1. Generate the MM-Fit classifier-window dataset with `../prepare.py` and keep
+   its metadata JSON with every experiment artifact.
+2. Train a weighted 11-class MM-Fit exercise/non-activity classifier on
+   `split_repo_unseen`.
+3. Implement the paper-style rep counter and evaluate it with oracle set
+   boundaries and true exercise labels first.
+4. Add classifier-predicted exercise labels, then measure the effect on the
+   rep counter.
+5. Implement the paper-style signal-processing counter as a baseline for
+   gyroscope-only, accelerometer-only, and acc+gyr inputs.
 
 ## Original MM-Fit Setup
 
